@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shakespeare-translator"
+version = "1.0.0"
+description = "Transform modern English into Shakespearean English using Claude AI"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    {name = "Nnaemeka Duru", email = "contact@emeka.dev"},
+]
+license = {text = "MIT"}
+keywords = ["shakespeare", "translator", "cli", "ai", "claude"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Utilities",
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "anthropic>=0.25.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=22.0",
+    "flake8>=4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/emeka68/shakespeare-translator"
+Documentation = "https://github.com/emeka68/shakespeare-translator#readme"
+Repository = "https://github.com/emeka68/shakespeare-translator.git"
+Issues = "https://github.com/emeka68/shakespeare-translator/issues"
+
+[project.scripts]
+shakespeare = "cli:cli"
+
+[tool.black]
+line-length = 99
+target-version = ['py38', 'py39', 'py310', 'py311']
+
+[tool.setuptools]
+packages = ["shakespeare_translator"]

@@ -1,0 +1,286 @@
+"""
+Shakespeare Translator — FastAPI Backend
+
+A humorous app that transforms modern English into Shakespearean English.
+Powered by Claude AI.
+
+Usage:
+    python main.py
+    curl -X POST http://localhost:8000/transform \
+        -H "Content-Type: application/json" \
+        -d '{"text": "Hello, how are you today?"}'
+"""
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from config import settings, Settings
+from transformer import transformer
+import time
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Shakespeare Translator",
+    description="Transform modern English into Shakespearean English",
+    version="1.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Rate limiting (simple in-memory)
+request_times = defaultdict(list)
+
+
+class TransformRequest(BaseModel):
+    """Request model for transformation."""
+    text: str
+
+
+class TransformResponse(BaseModel):
+    """Response model for transformation."""
+    original: str
+    transformed: str
+    timestamp: str
+    model: str = None
+    usage: dict = None
+    error: str = None
+
+
+def check_rate_limit(client_ip: str) -> bool:
+    """Simple rate limiting check."""
+    now = time.time()
+    minute_ago = now - 60
+    
+    # Clean old requests
+    request_times[client_ip] = [
+        req_time for req_time in request_times[client_ip]
+        if req_time > minute_ago
+    ]
+    
+    # Check limit
+    if len(request_times[client_ip]) >= settings.rate_limit_per_minute:
+        return False
+    
+    # Record this request
+    request_times[client_ip].append(now)
+    return True
+
+
+@app.on_event("startup")
+async def startup():
+    """Startup event."""
+    if not settings.validate():
+        print("❌ Configuration validation failed")
+        exit(1)
+    
+    print("\n✅ Shakespeare Translator initialized")
+    settings.summary()
+
+
+@app.get("/")
+async def root():
+    """Health check / welcome endpoint."""
+    return {
+        "status": "alive",
+        "app": "Shakespeare Translator",
+        "version": "1.0.0",
+        "endpoints": {
+            "transform": "POST /transform — Transform text to Shakespearean English",
+            "batch": "POST /batch — Transform multiple texts",
+            "health": "GET /health — Health check",
+            "docs": "GET /docs — API documentation"
+        }
+    }
+
+
+@app.get("/health")
+async def health():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "model": settings.model
+    }
+
+
+@app.post("/transform", response_model=TransformResponse)
+async def transform(request_body: TransformRequest, request: Request):
+    """
+    Transform modern English to Shakespearean English.
+    
+    Request body:
+    {
+        "text": "Hello, how are you today?"
+    }
+    
+    Response:
+    {
+        "original": "Hello, how are you today?",
+        "transformed": "Hark! How dost thou fare on this fine day?",
+        "timestamp": "2026-05-30T00:30:00.123456",
+        "model": "claude-3-5-sonnet-20241022",
+        "usage": {
+            "input_tokens": 45,
+            "output_tokens": 22,
+            "total_tokens": 67
+        },
+        "error": null
+    }
+    """
+    
+    # Get client IP for rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Check rate limit
+    if not check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Max {settings.rate_limit_per_minute} requests per minute"
+        )
+    
+    # Validate input
+    text = request_body.text.strip()
+    
+    if not text:
+        raise HTTPException(
+            status_code=400,
+            detail="Text cannot be empty"
+        )
+    
+    if len(text) > 2000:
+        raise HTTPException(
+            status_code=400,
+            detail="Text too long (max 2000 characters)"
+        )
+    
+    # Transform
+    result = transformer.transform(text)
+    
+    if result.get("error"):
+        raise HTTPException(
+            status_code=500,
+            detail=result["error"]
+        )
+    
+    return TransformResponse(
+        original=result["original"],
+        transformed=result["transformed"],
+        timestamp=result["timestamp"],
+        model=result.get("model"),
+        usage=result.get("usage"),
+        error=result.get("error")
+    )
+
+
+@app.post("/batch")
+async def batch_transform(texts: list[str], request: Request):
+    """
+    Transform multiple texts (up to 10).
+    
+    Request body:
+    {
+        "texts": [
+            "Hello world",
+            "How are you?"
+        ]
+    }
+    """
+    
+    client_ip = request.client.host if request.client else "unknown"
+    
+    if not texts:
+        raise HTTPException(status_code=400, detail="No texts provided")
+    
+    if len(texts) > 10:
+        raise HTTPException(status_code=400, detail="Max 10 texts per batch")
+    
+    # Check rate limit for batch
+    if not check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded"
+        )
+    
+    results = []
+    for text in texts:
+        text = text.strip()
+        if not text or len(text) > 2000:
+            continue
+        
+        result = transformer.transform(text)
+        results.append(result)
+    
+    return {
+        "count": len(results),
+        "results": results,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/docs", tags=["documentation"])
+async def docs():
+    """API Documentation."""
+    return {
+        "title": "Shakespeare Translator API",
+        "version": "1.0.0",
+        "description": "Transform modern English into Shakespearean English using Claude AI",
+        "endpoints": {
+            "GET /": "Welcome page",
+            "GET /health": "Health check",
+            "POST /transform": "Transform single text",
+            "POST /batch": "Transform multiple texts (up to 10)",
+            "GET /docs": "This documentation"
+        },
+        "example": {
+            "request": {
+                "text": "Hey, what's up?"
+            },
+            "response": {
+                "original": "Hey, what's up?",
+                "transformed": "Hark! What manner of tidings dost thou bring?",
+                "timestamp": "2026-05-30T00:30:00",
+                "model": "claude-3-5-sonnet-20241022",
+                "usage": {
+                    "input_tokens": 50,
+                    "output_tokens": 20,
+                    "total_tokens": 70
+                }
+            }
+        }
+    }
+
+
+@app.get("/config")
+async def get_config():
+    """Get current configuration (non-sensitive)."""
+    return {
+        "model": settings.model,
+        "rate_limit": settings.rate_limit_per_minute,
+        "host": settings.host,
+        "port": settings.port,
+        "debug": settings.debug
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    print("\n" + "=" * 60)
+    print("  SHAKESPEARE TRANSLATOR — Starting Server")
+    print("=" * 60)
+    
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.port,
+        reload=settings.debug
+    )
