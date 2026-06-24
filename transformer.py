@@ -47,6 +47,17 @@ class ShakespeareTransformer:
         self.client = Anthropic()
         self.model = settings.model
 
+    def _extract_translation(self, text: str) -> str:
+        """Strip anything after the first translation — alternatives, notes, markdown."""
+        import re
+        # Remove markdown bold/headers/rules
+        text = re.sub(r'\*\*.*?\*\*\n?', '', text)
+        text = re.sub(r'^#+\s.*$', '', text, flags=re.MULTILINE)
+        text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
+        # Take only the first non-empty paragraph
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        return paragraphs[0] if paragraphs else text.strip()
+
     def _build_system_prompt(self, style: str, length: str) -> str:
         base = STYLE_PROMPTS.get(style, STYLE_PROMPTS["standard"])
         instruction = LENGTH_INSTRUCTIONS.get(length, LENGTH_INSTRUCTIONS["full"])
@@ -71,14 +82,16 @@ class ShakespeareTransformer:
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Transform this modern English to Shakespearean English:\n\n{text}",
+                        "content": f"Translate into Shakespearean English:\n\n{text}",
                     }
                 ],
             )
 
+            transformed = self._extract_translation(response.content[0].text)
+
             return {
                 "original": text,
-                "transformed": response.content[0].text,
+                "transformed": transformed,
                 "timestamp": datetime.now().isoformat(),
                 "model": self.model,
                 "style": style,
