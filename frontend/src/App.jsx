@@ -10,6 +10,8 @@ const ShakespeareTranslator = () => {
   const [copySuccess, setCopySuccess] = useState(false);
   const [offline, setOffline] = useState(!navigator.onLine);
   const [history, setHistory] = useState([]);
+  const [style, setStyle] = useState('standard');
+  const [concise, setConcise] = useState(false);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -75,7 +77,7 @@ const ShakespeareTranslator = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text: input }),
+        body: JSON.stringify({ text: input, style, length: concise ? 'concise' : 'full' }),
       });
 
       if (!response.ok) {
@@ -181,6 +183,33 @@ const ShakespeareTranslator = () => {
           <div className="char-count">
             {input.length} / 2000 characters
           </div>
+        </div>
+
+        {/* Options */}
+        <div className="options-row">
+          <div className="style-pills">
+            {[
+              { value: 'standard', label: '📜 Standard' },
+              { value: 'dramatic', label: '🎭 Dramatic' },
+              { value: 'poetic', label: '🌹 Poetic' },
+            ].map((s) => (
+              <button
+                key={s.value}
+                onClick={() => setStyle(s.value)}
+                className={`style-pill ${style === s.value ? 'active' : ''}`}
+                disabled={loading}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setConcise(!concise)}
+            className={`concise-toggle ${concise ? 'active' : ''}`}
+            disabled={loading}
+          >
+            {concise ? '⚡ Concise' : '📄 Full'}
+          </button>
         </div>
 
         {/* Buttons */}

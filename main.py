@@ -56,6 +56,8 @@ request_times = defaultdict(list)
 class TransformRequest(BaseModel):
     """Request model for transformation."""
     text: str
+    style: Optional[str] = "standard"  # standard | dramatic | poetic
+    length: Optional[str] = "full"     # full | concise
 
 
 class TransformResponse(BaseModel):
@@ -64,6 +66,8 @@ class TransformResponse(BaseModel):
     transformed: str
     timestamp: str
     model: Optional[str] = None
+    style: Optional[str] = None
+    length: Optional[str] = None
     usage: Optional[dict] = None
     error: Optional[str] = None
 
@@ -169,8 +173,16 @@ async def transform(request_body: TransformRequest, request: Request):
             detail="Text too long (max 2000 characters)"
         )
     
+    style = request_body.style or "standard"
+    length = request_body.length or "full"
+
+    if style not in ("standard", "dramatic", "poetic"):
+        raise HTTPException(status_code=400, detail="Invalid style. Choose: standard, dramatic, poetic")
+    if length not in ("full", "concise"):
+        raise HTTPException(status_code=400, detail="Invalid length. Choose: full, concise")
+
     # Transform
-    result = transformer.transform(text)
+    result = transformer.transform(text, style=style, length=length)
     
     if result.get("error"):
         raise HTTPException(
@@ -183,8 +195,10 @@ async def transform(request_body: TransformRequest, request: Request):
         transformed=result["transformed"],
         timestamp=result["timestamp"],
         model=result.get("model"),
+        style=result.get("style"),
+        length=result.get("length"),
         usage=result.get("usage"),
-        error=result.get("error")
+        error=result.get("error"),
     )
 
 
