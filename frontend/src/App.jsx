@@ -17,6 +17,7 @@ const ShakespeareTranslator = () => {
   const [offline, setOffline] = useState(!navigator.onLine);
   const [history, setHistory] = useState([]);
   const [concise, setConcise] = useState(false);
+  const [regenLoading, setRegenLoading] = useState(false);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -85,6 +86,19 @@ const ShakespeareTranslator = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRegen = async () => {
+    if (!input.trim() || regenLoading) return;
+    setRegenLoading(true);
+    try {
+      const data = await fetchStyle(activeTab, input.trim(), concise ? 'concise' : 'full');
+      setResults((prev) => ({ ...prev, [activeTab]: data }));
+    } catch (err) {
+      setError(err.message || 'Regeneration failed');
+    } finally {
+      setRegenLoading(false);
     }
   };
 
@@ -211,6 +225,9 @@ const ShakespeareTranslator = () => {
               <div className="output-actions">
                 <button onClick={handleCopy} className="button copy-button">
                   {copySuccess ? '✅ Copied!' : '📋 Copy'}
+                </button>
+                <button onClick={handleRegen} disabled={regenLoading} className="button regen-button">
+                  {regenLoading ? '⏳' : '🔁 Regenerate'}
                 </button>
               </div>
               {totalTokens > 0 && (
