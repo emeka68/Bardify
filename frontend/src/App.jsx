@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import './App.css';
 
 const STYLES = [
@@ -207,7 +208,7 @@ const ShakespeareTranslator = () => {
 
             <div className="tab-panel">
               <div className="output-box">
-                <ReactMarkdown>{results[activeTab]?.transformed || ''}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkBreaks]}>{results[activeTab]?.transformed || ''}</ReactMarkdown>
               </div>
               <div className="output-actions">
                 <button onClick={handleCopy} className="button copy-button">
