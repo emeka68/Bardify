@@ -2,113 +2,82 @@ import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './App.css';
 
+const STYLES = [
+  { value: 'standard', label: '📜 Standard' },
+  { value: 'dramatic', label: '🎭 Dramatic' },
+  { value: 'poetic',   label: '🌹 Poetic'   },
+];
+
 const ShakespeareTranslator = () => {
   const [input, setInput] = useState('');
-  const [output, setOutput] = useState('');
+  const [results, setResults] = useState(null);   // { standard, dramatic, poetic }
+  const [activeTab, setActiveTab] = useState('standard');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [tokenUsage, setTokenUsage] = useState(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [offline, setOffline] = useState(!navigator.onLine);
   const [history, setHistory] = useState([]);
-  const [style, setStyle] = useState('standard');
   const [concise, setConcise] = useState(false);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-  // Handle online/offline events
   useEffect(() => {
     const handleOnline = () => setOffline(false);
     const handleOffline = () => setOffline(true);
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
-  // Load history from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('shakespeare-history');
     if (saved) {
-      try {
-        setHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to load history:', e);
-      }
+      try { setHistory(JSON.parse(saved)); } catch {}
     }
   }, []);
 
-  // Save to history
-  const saveToHistory = (original, transformed) => {
-    const newEntry = {
-      id: Date.now(),
-      original,
-      transformed,
-      timestamp: new Date().toISOString(),
-    };
-
-    const updated = [newEntry, ...history].slice(0, 10); // Keep last 10
+  const saveToHistory = (original, styleResults) => {
+    const entry = { id: Date.now(), original, results: styleResults, timestamp: new Date().toISOString() };
+    const updated = [entry, ...history].slice(0, 10);
     setHistory(updated);
     localStorage.setItem('shakespeare-history', JSON.stringify(updated));
   };
 
-  const handleTransform = async () => {
-    if (!input.trim()) {
-      setError('Please enter some text');
-      return;
+  const fetchStyle = async (style, text, length) => {
+    const res = await fetch(`${API_BASE_URL}/transform`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, style, length }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Transformation failed');
     }
+    return res.json();
+  };
 
-    if (offline) {
-      setError('You are offline. Please check your connection.');
-      return;
-    }
+  const handleTransform = async () => {
+    if (!input.trim()) { setError('Please enter some text'); return; }
+    if (offline) { setError('You are offline. Please check your connection.'); return; }
 
     setLoading(true);
     setError('');
-    setOutput('');
-    setTokenUsage(null);
+    setResults(null);
+    setActiveTab('standard');
+
+    const length = concise ? 'concise' : 'full';
 
     try {
-      const response = await fetch(`${API_BASE_URL}/transform`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: input, style, length: concise ? 'concise' : 'full' }),
-      });
+      const [standard, dramatic, poetic] = await Promise.all(
+        STYLES.map((s) => fetchStyle(s.value, input.trim(), length))
+      );
 
-      if (!response.ok) {
-        if (response.status === 503) {
-          const data = await response.json();
-          if (data.offline) {
-            setError('Backend is offline. Please try again later.');
-          } else {
-            setError('Service unavailable. Please try again later.');
-          }
-        } else {
-          const errorData = await response.json();
-          setError(errorData.detail || 'Transformation failed');
-        }
-        return;
-      }
-
-      const data = await response.json();
-
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
-
-      setOutput(data.transformed);
-      saveToHistory(data.original, data.transformed);
-
-      if (data.usage) {
-        setTokenUsage(data.usage);
-      }
+      const styleResults = { standard, dramatic, poetic };
+      setResults(styleResults);
+      saveToHistory(input.trim(), styleResults);
     } catch (err) {
       if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
         setError('Cannot reach the server. Check your connection.');
@@ -121,8 +90,9 @@ const ShakespeareTranslator = () => {
   };
 
   const handleCopy = async () => {
+    const text = results?.[activeTab]?.transformed || '';
     try {
-      await navigator.clipboard.writeText(output);
+      await navigator.clipboard.writeText(text);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     } catch {
@@ -132,26 +102,28 @@ const ShakespeareTranslator = () => {
 
   const handleClear = () => {
     setInput('');
-    setOutput('');
+    setResults(null);
     setError('');
-    setTokenUsage(null);
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      handleTransform();
-    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleTransform();
   };
 
   const handleLoadHistory = (item) => {
     setInput(item.original);
-    setOutput(item.transformed);
+    setResults(item.results);
+    setActiveTab('standard');
   };
 
   const handleClearHistory = () => {
     setHistory([]);
     localStorage.removeItem('shakespeare-history');
   };
+
+  const totalTokens = results
+    ? Object.values(results).reduce((sum, r) => sum + (r?.usage?.total_tokens || 0), 0)
+    : 0;
 
   const exampleTexts = [
     { text: "Hey, what's up?", label: 'Greeting' },
@@ -169,7 +141,7 @@ const ShakespeareTranslator = () => {
       </div>
 
       <div className="content">
-        {/* Input Section */}
+        {/* Input */}
         <div className="section">
           <label className="label">Your Text</label>
           <textarea
@@ -181,29 +153,12 @@ const ShakespeareTranslator = () => {
             disabled={loading}
             maxLength={2000}
           />
-          <div className="char-count">
-            {input.length} / 2000 characters
-          </div>
+          <div className="char-count">{input.length} / 2000 characters</div>
         </div>
 
         {/* Options */}
         <div className="options-row">
-          <div className="style-pills">
-            {[
-              { value: 'standard', label: '📜 Standard' },
-              { value: 'dramatic', label: '🎭 Dramatic' },
-              { value: 'poetic', label: '🌹 Poetic' },
-            ].map((s) => (
-              <button
-                key={s.value}
-                onClick={() => setStyle(s.value)}
-                className={`style-pill ${style === s.value ? 'active' : ''}`}
-                disabled={loading}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
+          <span className="options-label">Response length</span>
           <button
             onClick={() => setConcise(!concise)}
             className={`concise-toggle ${concise ? 'active' : ''}`}
@@ -219,53 +174,52 @@ const ShakespeareTranslator = () => {
             onClick={handleTransform}
             disabled={loading || !input.trim() || offline}
             className="button primary-button"
-            style={{
-              opacity: loading || !input.trim() || offline ? 0.6 : 1,
-            }}
+            style={{ opacity: loading || !input.trim() || offline ? 0.6 : 1 }}
           >
             {loading ? '⏳ Transforming...' : '✨ Transform to Shakespeare'}
           </button>
-          <button
-            onClick={handleClear}
-            disabled={loading}
-            className="button secondary-button"
-          >
+          <button onClick={handleClear} disabled={loading} className="button secondary-button">
             Clear
           </button>
         </div>
 
-        {/* Error Message */}
+        {/* Error */}
         {error && (
           <div className="error">
             <strong>❌ Error:</strong> {error}
           </div>
         )}
 
-        {/* Output Section */}
-        {output && (
-          <div className="section">
-            <label className="label">Shakespearean Version</label>
-            <div className="output-box">
-              <ReactMarkdown>{output}</ReactMarkdown>
-            </div>
-            <div className="output-actions">
-              <button
-                onClick={handleCopy}
-                className="button copy-button"
-              >
-                {copySuccess ? '✅ Copied!' : '📋 Copy'}
-              </button>
+        {/* Tabbed Results */}
+        {results && (
+          <div className="section results-section">
+            <div className="tabs-header">
+              {STYLES.map((s) => (
+                <button
+                  key={s.value}
+                  onClick={() => setActiveTab(s.value)}
+                  className={`tab-btn ${activeTab === s.value ? 'active' : ''}`}
+                >
+                  {s.label}
+                </button>
+              ))}
             </div>
 
-            {/* Token Usage */}
-            {tokenUsage && (
-              <div className="token-info">
-                <small>
-                  🔢 Tokens used: {tokenUsage.total_tokens}
-                  (input: {tokenUsage.input_tokens}, output: {tokenUsage.output_tokens})
-                </small>
+            <div className="tab-panel">
+              <div className="output-box">
+                <ReactMarkdown>{results[activeTab]?.transformed || ''}</ReactMarkdown>
               </div>
-            )}
+              <div className="output-actions">
+                <button onClick={handleCopy} className="button copy-button">
+                  {copySuccess ? '✅ Copied!' : '📋 Copy'}
+                </button>
+              </div>
+              {totalTokens > 0 && (
+                <div className="token-info">
+                  <small>🔢 Total tokens used across all styles: {totalTokens}</small>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -291,20 +245,11 @@ const ShakespeareTranslator = () => {
           <div className="history">
             <div className="history-header">
               <h3 className="history-title">📜 Recent Transformations</h3>
-              <button
-                onClick={handleClearHistory}
-                className="clear-history-btn"
-              >
-                Clear
-              </button>
+              <button onClick={handleClearHistory} className="clear-history-btn">Clear</button>
             </div>
             <div className="history-list">
               {history.map((item) => (
-                <div
-                  key={item.id}
-                  className="history-item"
-                  onClick={() => handleLoadHistory(item)}
-                >
+                <div key={item.id} className="history-item" onClick={() => handleLoadHistory(item)}>
                   <div className="history-original">{item.original.substring(0, 40)}...</div>
                   <small className="history-date">
                     {new Date(item.timestamp).toLocaleTimeString()}
@@ -319,17 +264,11 @@ const ShakespeareTranslator = () => {
       <div className="footer">
         <p>Built with React + Claude API + FastAPI</p>
         <p>
-          <a href="https://github.com/emeka68/shakespeare-translator" className="link">
-            GitHub
-          </a>
+          <a href="https://github.com/emeka68/Bardify" className="link">GitHub</a>
           {' | '}
-          <a href="http://localhost:8000/docs" className="link">
-            API Docs
-          </a>
+          <a href="http://localhost:8000/docs" className="link">API Docs</a>
           {' | '}
-          <a href="https://twitter.com/SirTivaa" className="link">
-            Twitter
-          </a>
+          <a href="https://twitter.com/SirTivaa" className="link">Twitter</a>
         </p>
       </div>
     </div>
