@@ -16,10 +16,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from config import settings, Settings
 from transformer import transformer
+from typing import Optional
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if not settings.validate():
+        print("❌ Configuration validation failed")
+        exit(1)
+    print("\n✅ Shakespeare Translator initialized")
+    settings.summary()
+    yield
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -42,16 +53,6 @@ app.add_middleware(
 request_times = defaultdict(list)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    if not settings.validate():
-        print("❌ Configuration validation failed")
-        exit(1)
-    print("\n✅ Shakespeare Translator initialized")
-    settings.summary()
-    yield
-
-
 class TransformRequest(BaseModel):
     """Request model for transformation."""
     text: str
@@ -62,9 +63,9 @@ class TransformResponse(BaseModel):
     original: str
     transformed: str
     timestamp: str
-    model: str = None
-    usage: dict = None
-    error: str = None
+    model: Optional[str] = None
+    usage: Optional[dict] = None
+    error: Optional[str] = None
 
 
 class BatchRequest(BaseModel):
