@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
     
     # Model Configuration
-    model: str = os.getenv("MODEL", "claude-3-5-sonnet-20241022")
+    model: str = os.getenv("MODEL", "claude-haiku-4-5-20251001")
     
     # Rate Limiting
     rate_limit_per_minute: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))

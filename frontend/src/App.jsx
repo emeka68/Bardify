@@ -117,10 +117,14 @@ const ShakespeareTranslator = () => {
     }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(output);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(output);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch {
+      setError('Could not copy to clipboard');
+    }
   };
 
   const handleClear = () => {
@@ -130,7 +134,7 @@ const ShakespeareTranslator = () => {
     setTokenUsage(null);
   };
 
-  const handleKeyPress = (e) => {
+  const handleKeyDown = (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       handleTransform();
     }
@@ -168,7 +172,7 @@ const ShakespeareTranslator = () => {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder="Enter modern English text... (Ctrl+Enter to transform)"
             className="textarea"
             disabled={loading}

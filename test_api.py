@@ -22,15 +22,19 @@ def test_basic_transformation():
     text = "Hey, what's up? I'm just hanging out with my friends."
     result = transformer.transform(text)
     
+    if result.get("error"):
+        print(f"\n❌ Error: {result['error']}")
+        return False
+
     print(f"\n📝 Original:\n   {result['original']}")
     print(f"\n🎭 Shakespearean:\n   {result['transformed']}")
-    
+
     if result.get("usage"):
         print(f"\n📊 Usage:")
         print(f"   Input tokens:  {result['usage']['input_tokens']}")
         print(f"   Output tokens: {result['usage']['output_tokens']}")
         print(f"   Total tokens:  {result['usage']['total_tokens']}")
-    
+
     return bool(result.get("transformed"))
 
 
@@ -42,10 +46,14 @@ def test_formal_text():
     
     text = "Ladies and gentlemen, welcome to our conference on modern technology."
     result = transformer.transform(text)
-    
+
+    if result.get("error"):
+        print(f"\n❌ Error: {result['error']}")
+        return False
+
     print(f"\n📝 Original:\n   {result['original']}")
     print(f"\n🎭 Shakespearean:\n   {result['transformed']}")
-    
+
     return bool(result.get("transformed"))
 
 
@@ -57,10 +65,14 @@ def test_slang():
     
     text = "That new startup is totally fire and definitely going to make it big."
     result = transformer.transform(text)
-    
+
+    if result.get("error"):
+        print(f"\n❌ Error: {result['error']}")
+        return False
+
     print(f"\n📝 Original:\n   {result['original']}")
     print(f"\n🎭 Shakespearean:\n   {result['transformed']}")
-    
+
     return bool(result.get("transformed"))
 
 
@@ -72,10 +84,14 @@ def test_short_text():
     
     text = "No way!"
     result = transformer.transform(text)
-    
+
+    if result.get("error"):
+        print(f"\n❌ Error: {result['error']}")
+        return False
+
     print(f"\n📝 Original:\n   {result['original']}")
     print(f"\n🎭 Shakespearean:\n   {result['transformed']}")
-    
+
     return bool(result.get("transformed"))
 
 

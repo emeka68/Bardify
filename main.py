@@ -18,13 +18,15 @@ from config import settings, Settings
 from transformer import transformer
 import time
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 # Initialize FastAPI app
 app = FastAPI(
     title="Shakespeare Translator",
     description="Transform modern English into Shakespearean English",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -40,6 +42,16 @@ app.add_middleware(
 request_times = defaultdict(list)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if not settings.validate():
+        print("❌ Configuration validation failed")
+        exit(1)
+    print("\n✅ Shakespeare Translator initialized")
+    settings.summary()
+    yield
+
+
 class TransformRequest(BaseModel):
     """Request model for transformation."""
     text: str
@@ -53,6 +65,11 @@ class TransformResponse(BaseModel):
     model: str = None
     usage: dict = None
     error: str = None
+
+
+class BatchRequest(BaseModel):
+    """Request model for batch transformation."""
+    texts: list[str]
 
 
 def check_rate_limit(client_ip: str) -> bool:
@@ -73,17 +90,6 @@ def check_rate_limit(client_ip: str) -> bool:
     # Record this request
     request_times[client_ip].append(now)
     return True
-
-
-@app.on_event("startup")
-async def startup():
-    """Startup event."""
-    if not settings.validate():
-        print("❌ Configuration validation failed")
-        exit(1)
-    
-    print("\n✅ Shakespeare Translator initialized")
-    settings.summary()
 
 
 @app.get("/")
@@ -182,10 +188,10 @@ async def transform(request_body: TransformRequest, request: Request):
 
 
 @app.post("/batch")
-async def batch_transform(texts: list[str], request: Request):
+async def batch_transform(request_body: BatchRequest, request: Request):
     """
     Transform multiple texts (up to 10).
-    
+
     Request body:
     {
         "texts": [
@@ -194,9 +200,10 @@ async def batch_transform(texts: list[str], request: Request):
         ]
     }
     """
-    
+
+    texts = request_body.texts
     client_ip = request.client.host if request.client else "unknown"
-    
+
     if not texts:
         raise HTTPException(status_code=400, detail="No texts provided")
     
