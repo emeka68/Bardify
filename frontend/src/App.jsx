@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './App.css';
 
 const ShakespeareTranslator = () => {
@@ -245,7 +246,7 @@ const ShakespeareTranslator = () => {
           <div className="section">
             <label className="label">Shakespearean Version</label>
             <div className="output-box">
-              <p>{output}</p>
+              <ReactMarkdown>{output}</ReactMarkdown>
             </div>
             <div className="output-actions">
               <button

@@ -263,6 +263,58 @@ body {
   word-wrap: break-word;
 }
 
+.output-box h1,
+.output-box h2,
+.output-box h3 {
+  margin: 16px 0 8px;
+  color: var(--dark-text);
+  font-size: 1em;
+  font-weight: 700;
+}
+
+.output-box h1:first-child,
+.output-box h2:first-child,
+.output-box h3:first-child {
+  margin-top: 0;
+}
+
+.output-box p {
+  margin: 0 0 12px;
+}
+
+.output-box p:last-child {
+  margin-bottom: 0;
+}
+
+.output-box strong {
+  font-weight: 700;
+  color: var(--dark-text);
+}
+
+.output-box ul,
+.output-box ol {
+  margin: 8px 0 12px 20px;
+}
+
+.output-box li {
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+
+.output-box hr {
+  border: none;
+  border-top: 1px solid #e0e0e0;
+  margin: 16px 0;
+}
+
+.output-box blockquote {
+  border-left: 3px solid var(--primary);
+  margin: 12px 0;
+  padding: 4px 12px;
+  color: #555;
+  font-style: italic;
+}
+
 .output-actions {
   margin-top: 15px;
   display: flex;
