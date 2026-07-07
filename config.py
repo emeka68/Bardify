@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     
     # API Configuration
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
     
     # Server Configuration
     host: str = os.getenv("HOST", "0.0.0.0")

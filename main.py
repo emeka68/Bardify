@@ -16,7 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from config import settings, Settings
 from transformer import transformer
+from tts import tts_service, VOICES
 from typing import Optional
+import base64
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -75,6 +77,19 @@ class TransformResponse(BaseModel):
 class BatchRequest(BaseModel):
     """Request model for batch transformation."""
     texts: list[str]
+
+
+class SpeakRequest(BaseModel):
+    """Request model for TTS."""
+    text: str
+    voice: str
+
+
+class SpeakResponse(BaseModel):
+    """Response model for TTS."""
+    audio: str   # base64-encoded mp3
+    voice: str
+    format: str = "mp3"
 
 
 def check_rate_limit(client_ip: str) -> bool:
@@ -291,6 +306,53 @@ async def get_config():
         "port": settings.port,
         "debug": settings.debug
     }
+
+
+@app.get("/voices")
+async def get_voices():
+    """List available TTS voices and whether TTS is enabled."""
+    return {
+        "voices": [
+            {"key": k, "name": v["name"], "emoji": v["emoji"]}
+            for k, v in VOICES.items()
+        ],
+        "tts_enabled": bool(settings.elevenlabs_api_key),
+    }
+
+
+@app.post("/speak", response_model=SpeakResponse)
+async def speak(request_body: SpeakRequest, request: Request):
+    """Convert Shakespearean text to speech using ElevenLabs."""
+    if not settings.elevenlabs_api_key:
+        raise HTTPException(status_code=503, detail="TTS not configured")
+
+    if request_body.voice not in VOICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid voice. Choose: {', '.join(VOICES.keys())}"
+        )
+
+    text = request_body.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    if len(text) > 5000:
+        raise HTTPException(status_code=400, detail="Text too long for TTS (max 5000 chars)")
+
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    try:
+        audio_bytes = await tts_service.speak(text, request_body.voice)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"TTS service error: {str(e)}")
+
+    return SpeakResponse(
+        audio=base64.b64encode(audio_bytes).decode("utf-8"),
+        voice=request_body.voice,
+    )
 
 
 if __name__ == "__main__":

@@ -1,10 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
 const STYLES = [
   { value: 'standard', label: '📜 Standard' },
   { value: 'dramatic', label: '🎭 Dramatic' },
   { value: 'poetic',   label: '🌹 Poetic'   },
+];
+
+const VOICES = [
+  { key: 'posh',       emoji: '🎩', name: 'Posh British'  },
+  { key: 'roadman',    emoji: '🧢', name: 'Roadman'        },
+  { key: 'villain',    emoji: '😈', name: 'Villain'        },
+  { key: 'southern',   emoji: '🌸', name: 'Southern Belle' },
+  { key: 'romantic',   emoji: '💕', name: 'Romantic'       },
+  { key: 'theatre',    emoji: '🎬', name: 'Theatre Kid'    },
+  { key: 'elder',      emoji: '🦉', name: 'Wise Elder'     },
+  { key: 'mysterious', emoji: '🌙', name: 'Mysterious'     },
 ];
 
 const ShakespeareTranslator = () => {
@@ -18,6 +29,11 @@ const ShakespeareTranslator = () => {
   const [history, setHistory] = useState([]);
   const [concise, setConcise] = useState(false);
   const [regenLoading, setRegenLoading] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState(VOICES[0].key);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const audioRef = useRef(null);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -99,6 +115,48 @@ const ShakespeareTranslator = () => {
       setError(err.message || 'Regeneration failed');
     } finally {
       setRegenLoading(false);
+    }
+  };
+
+  const handleListen = async () => {
+    if (audioLoading || !results?.[activeTab]?.transformed) return;
+
+    // Toggle off if already playing
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsPlaying(false);
+      return;
+    }
+
+    setAudioLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/speak`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: results[activeTab].transformed, voice: selectedVoice }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        if (res.status === 503) setTtsEnabled(false);
+        throw new Error(err.detail || 'TTS failed');
+      }
+
+      const data = await res.json();
+      const audio = new Audio(`data:audio/${data.format};base64,${data.audio}`);
+      audioRef.current = audio;
+      audio.onended = () => { setIsPlaying(false); audioRef.current = null; };
+      audio.onerror = () => { setIsPlaying(false); setError('Audio playback failed'); audioRef.current = null; };
+      setIsPlaying(true);
+      audio.play();
+    } catch (err) {
+      setError(err.message || 'Could not play audio');
+      setIsPlaying(false);
+    } finally {
+      setAudioLoading(false);
     }
   };
 
@@ -218,6 +276,20 @@ const ShakespeareTranslator = () => {
               ))}
             </div>
 
+            {ttsEnabled && (
+              <div className="voice-selector">
+                {VOICES.map((v) => (
+                  <button
+                    key={v.key}
+                    onClick={() => setSelectedVoice(v.key)}
+                    className={`voice-btn ${selectedVoice === v.key ? 'active' : ''}`}
+                  >
+                    {v.emoji} {v.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="tab-panel">
               <div className="output-box">
                 {results[activeTab]?.transformed || ''}
@@ -229,6 +301,15 @@ const ShakespeareTranslator = () => {
                 <button onClick={handleRegen} disabled={regenLoading} className="button regen-button">
                   {regenLoading ? '⏳' : '🔁 Regenerate'}
                 </button>
+                {ttsEnabled && (
+                  <button
+                    onClick={handleListen}
+                    disabled={audioLoading}
+                    className={`button listen-button ${isPlaying ? 'playing' : ''}`}
+                  >
+                    {audioLoading ? '⏳' : isPlaying ? '⏹ Stop' : '🔊 Listen'}
+                  </button>
+                )}
               </div>
               {totalTokens > 0 && (
                 <div className="token-info">
