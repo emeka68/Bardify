@@ -17,19 +17,26 @@ from pydantic import BaseModel
 from config import settings, Settings
 from transformer import transformer
 from tts import tts_service, VOICES
+from logging_config import setup_logging, request_id_var, log_extra
 from typing import Optional
 import base64
+import logging
 import time
+import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
+setup_logging(level="DEBUG" if settings.debug else "INFO")
+logger = logging.getLogger("bardify")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not settings.validate():
-        print("❌ Configuration validation failed")
+        logger.error("Configuration validation failed")
         exit(1)
-    print("\n✅ Shakespeare Translator initialized")
+    logger.info("Shakespeare Translator initialized", extra=log_extra(model=settings.model))
     settings.summary()
     yield
 
@@ -50,6 +57,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    """Attach a request ID to context and log method, path, status, and duration."""
+    request_id = str(uuid.uuid4())[:8]
+    request_id_var.set(request_id)
+
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = round((time.time() - start) * 1000, 2)
+
+    logger.info(
+        "request handled",
+        extra=log_extra(
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        ),
+    )
+    response.headers["X-Request-ID"] = request_id
+    return response
+
 
 # Rate limiting (simple in-memory)
 request_times = defaultdict(list)
@@ -168,11 +198,12 @@ async def transform(request_body: TransformRequest, request: Request):
     
     # Check rate limit
     if not check_rate_limit(client_ip):
+        logger.warning("rate limit exceeded", extra=log_extra(client_ip=client_ip, endpoint="transform"))
         raise HTTPException(
             status_code=429,
             detail=f"Rate limit exceeded. Max {settings.rate_limit_per_minute} requests per minute"
         )
-    
+
     # Validate input
     text = request_body.text.strip()
     
@@ -198,13 +229,24 @@ async def transform(request_body: TransformRequest, request: Request):
 
     # Transform
     result = transformer.transform(text, style=style, length=length)
-    
+
     if result.get("error"):
+        logger.error("transform failed", extra=log_extra(style=style, length=length, error=result["error"]))
         raise HTTPException(
             status_code=500,
             detail=result["error"]
         )
-    
+
+    logger.info(
+        "transform succeeded",
+        extra=log_extra(
+            style=style,
+            length=length,
+            input_chars=len(text),
+            total_tokens=result.get("usage", {}).get("total_tokens"),
+        ),
+    )
+
     return TransformResponse(
         original=result["original"],
         transformed=result["transformed"],
@@ -345,9 +387,13 @@ async def speak(request_body: SpeakRequest, request: Request):
     try:
         audio_bytes = await tts_service.speak(text, request_body.voice)
     except ValueError as e:
+        logger.error("tts auth failed", extra=log_extra(voice=request_body.voice, error=str(e)))
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
+        logger.error("tts service error", extra=log_extra(voice=request_body.voice, error=str(e)))
         raise HTTPException(status_code=502, detail=f"TTS service error: {str(e)}")
+
+    logger.info("tts succeeded", extra=log_extra(voice=request_body.voice, input_chars=len(text)))
 
     return SpeakResponse(
         audio=base64.b64encode(audio_bytes).decode("utf-8"),
