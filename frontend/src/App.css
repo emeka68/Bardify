@@ -49,6 +49,13 @@
   box-sizing: border-box;
 }
 
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', sans-serif;
@@ -438,6 +445,27 @@ body {
   background: #da190b;
 }
 
+.history-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.export-favorites-btn {
+  padding: 6px 12px;
+  font-size: 0.85em;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 2px solid var(--border-color-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.export-favorites-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
 .history-list {
   display: grid;
   gap: 8px;
@@ -452,9 +480,14 @@ body {
   transition: all 0.3s;
 }
 
-.history-item:hover {
+.history-item:hover,
+.history-item:focus-visible {
   transform: translateX(5px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.favorite-item {
+  border-left-color: var(--warning);
 }
 
 .history-original {
@@ -463,9 +496,41 @@ body {
   margin-bottom: 4px;
 }
 
+.history-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .history-date {
   color: var(--text-muted);
   font-size: 0.8em;
+}
+
+.favorite-star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1em;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.favorite-star-btn:hover {
+  background: var(--surface-muted);
+}
+
+.favorite-button {
+  background: var(--surface);
+  color: var(--warning);
+  border: 2px solid var(--border-color-strong);
+  flex: none;
+  min-width: auto;
+}
+
+.favorite-button:hover:not(:disabled) {
+  border-color: var(--warning);
 }
 
 /* Footer */
@@ -640,6 +705,31 @@ body {
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.4); }
   50%       { box-shadow: 0 0 0 6px rgba(192, 57, 43, 0); }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .button:hover:not(:disabled),
+  .example-button:hover,
+  .history-item:hover,
+  .history-item:focus-visible,
+  .copy-button:hover,
+  .regen-button:hover:not(:disabled),
+  .listen-button:hover:not(:disabled),
+  .favorite-button:hover:not(:disabled) {
+    transform: none;
+  }
+
+  .listen-button.playing {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.4);
+  }
 }
 
 /* Print Styles */

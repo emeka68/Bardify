@@ -37,6 +37,24 @@ def reset_rate_limits():
     main.request_times.clear()
 
 
+@pytest.fixture(autouse=True)
+def reset_caches():
+    """Ensure cache state doesn't leak between tests."""
+    main.transform_cache.clear()
+    main.tts_cache.clear()
+    yield
+    main.transform_cache.clear()
+    main.tts_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_stats():
+    """Ensure usage counters don't leak between tests."""
+    main.stats.reset()
+    yield
+    main.stats.reset()
+
+
 @pytest.fixture
 def mock_transformer(monkeypatch):
     """Patch the global transformer instance's Anthropic client."""

@@ -18,6 +18,8 @@ from config import settings, Settings
 from transformer import transformer
 from tts import tts_service, VOICES
 from logging_config import setup_logging, request_id_var, log_extra
+from cache import transform_cache, tts_cache, make_key
+from counters import stats
 from typing import Optional
 import base64
 import logging
@@ -227,16 +229,27 @@ async def transform(request_body: TransformRequest, request: Request):
     if length not in ("full", "concise"):
         raise HTTPException(status_code=400, detail="Invalid length. Choose: full, concise")
 
-    # Transform
-    result = transformer.transform(text, style=style, length=length)
+    # Transform (check cache first)
+    cache_key = make_key(text, style, length)
+    cached = transform_cache.get(cache_key)
+    cache_hit = cached is not None
+
+    if cache_hit:
+        result = cached
+    else:
+        result = transformer.transform(text, style=style, length=length)
+        if not result.get("error"):
+            transform_cache.set(cache_key, result)
 
     if result.get("error"):
+        stats.record_error("transform")
         logger.error("transform failed", extra=log_extra(style=style, length=length, error=result["error"]))
         raise HTTPException(
             status_code=500,
             detail=result["error"]
         )
 
+    stats.record_transform(style, cache_hit)
     logger.info(
         "transform succeeded",
         extra=log_extra(
@@ -244,6 +257,7 @@ async def transform(request_body: TransformRequest, request: Request):
             length=length,
             input_chars=len(text),
             total_tokens=result.get("usage", {}).get("total_tokens"),
+            cache_hit=cache_hit,
         ),
     )
 
@@ -384,21 +398,39 @@ async def speak(request_body: SpeakRequest, request: Request):
     if not check_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
-    try:
-        audio_bytes = await tts_service.speak(text, request_body.voice)
-    except ValueError as e:
-        logger.error("tts auth failed", extra=log_extra(voice=request_body.voice, error=str(e)))
-        raise HTTPException(status_code=401, detail=str(e))
-    except Exception as e:
-        logger.error("tts service error", extra=log_extra(voice=request_body.voice, error=str(e)))
-        raise HTTPException(status_code=502, detail=f"TTS service error: {str(e)}")
+    cache_key = make_key(text, request_body.voice)
+    audio_bytes = tts_cache.get(cache_key)
+    cache_hit = audio_bytes is not None
 
-    logger.info("tts succeeded", extra=log_extra(voice=request_body.voice, input_chars=len(text)))
+    if not cache_hit:
+        try:
+            audio_bytes = await tts_service.speak(text, request_body.voice)
+        except ValueError as e:
+            stats.record_error("speak")
+            logger.error("tts auth failed", extra=log_extra(voice=request_body.voice, error=str(e)))
+            raise HTTPException(status_code=401, detail=str(e))
+        except Exception as e:
+            stats.record_error("speak")
+            logger.error("tts service error", extra=log_extra(voice=request_body.voice, error=str(e)))
+            raise HTTPException(status_code=502, detail=f"TTS service error: {str(e)}")
+        tts_cache.set(cache_key, audio_bytes)
+
+    stats.record_speak(request_body.voice, cache_hit)
+    logger.info(
+        "tts succeeded",
+        extra=log_extra(voice=request_body.voice, input_chars=len(text), cache_hit=cache_hit),
+    )
 
     return SpeakResponse(
         audio=base64.b64encode(audio_bytes).decode("utf-8"),
         voice=request_body.voice,
     )
+
+
+@app.get("/stats")
+async def get_stats():
+    """Usage statistics: style/voice popularity, cache hit rate, error counts."""
+    return stats.snapshot()
 
 
 if __name__ == "__main__":

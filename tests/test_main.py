@@ -149,3 +149,78 @@ def test_config_endpoint_hides_secrets(client):
     body = resp.json()
     assert "anthropic_api_key" not in body
     assert "elevenlabs_api_key" not in body
+
+
+def test_transform_uses_cache_on_repeated_request(client):
+    fake_result = {
+        "original": "hello",
+        "transformed": "Good morrow!",
+        "timestamp": "2026-01-01T00:00:00",
+        "style": "standard",
+        "length": "full",
+        "usage": {"input_tokens": 5, "output_tokens": 5, "total_tokens": 10},
+        "error": None,
+    }
+    with patch.object(main.transformer, "transform", return_value=fake_result) as mock_transform:
+        resp1 = client.post("/transform", json={"text": "hello", "style": "standard", "length": "full"})
+        resp2 = client.post("/transform", json={"text": "hello", "style": "standard", "length": "full"})
+
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp1.json()["transformed"] == resp2.json()["transformed"]
+    mock_transform.assert_called_once()
+
+
+def test_transform_errors_are_not_cached(client):
+    fake_error = {"error": "boom", "original": "hello", "transformed": ""}
+    with patch.object(main.transformer, "transform", return_value=fake_error) as mock_transform:
+        client.post("/transform", json={"text": "hello"})
+        client.post("/transform", json={"text": "hello"})
+
+    assert mock_transform.call_count == 2
+
+
+def test_speak_uses_cache_on_repeated_request(client, monkeypatch):
+    monkeypatch.setattr(main.settings, "elevenlabs_api_key", "fake-key")
+    call_count = 0
+
+    async def fake_speak(text, voice_key):
+        nonlocal call_count
+        call_count += 1
+        return b"fake-audio-bytes"
+
+    with patch.object(main.tts_service, "speak", side_effect=fake_speak):
+        client.post("/speak", json={"text": "hello", "voice": "posh"})
+        client.post("/speak", json={"text": "hello", "voice": "posh"})
+
+    assert call_count == 1
+
+
+def test_stats_endpoint_tracks_usage(client):
+    fake_result = {
+        "original": "hi",
+        "transformed": "Hark!",
+        "timestamp": "2026-01-01T00:00:00",
+        "style": "dramatic",
+        "length": "full",
+        "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        "error": None,
+    }
+    with patch.object(main.transformer, "transform", return_value=fake_result):
+        client.post("/transform", json={"text": "hi", "style": "dramatic"})
+
+    resp = client.get("/stats")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["style_usage"]["dramatic"] == 1
+    assert body["cache_misses"] == 1
+    assert body["cache_hits"] == 0
+
+
+def test_stats_endpoint_tracks_errors(client):
+    fake_error = {"error": "boom", "original": "hi", "transformed": ""}
+    with patch.object(main.transformer, "transform", return_value=fake_error):
+        client.post("/transform", json={"text": "hi"})
+
+    resp = client.get("/stats")
+    assert resp.json()["errors_by_endpoint"]["transform"] == 1
